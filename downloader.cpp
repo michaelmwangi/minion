@@ -1,10 +1,15 @@
 #include "downloader.h"
+#include "downloaderstats.h"
+#include "minion.h"
 #include <Poco/StreamCopier.h>
 #include <Poco/URI.h>
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
 #include <Poco/Exception.h>
+#include <functional>
+#include <algorithm>
+#include <vector>
 #include <iostream>
 #include <istream>
 #include <fstream>
@@ -12,6 +17,13 @@
 
 using namespace Poco::Net;
 using namespace Poco;
+
+template<typename container1, typename container2, typename lambda>
+void launch_minions(container1 &cont1, container2 &cont2, lambda  func){
+    auto cont1_it = std::begin(cont1);
+    for(;cont1_it != std::end(cont1); ++cont1_it)
+        func(cont1_it, cont2);
+}
 
 Downloader::Downloader(std::string url)
     : _num_threads{1}, _num_filechunks{1}, _filesize{0}, _url{url}, _filename{"test"}
@@ -32,10 +44,11 @@ Downloader::~Downloader(){
     delete http_session;
     delete http_response;
     delete http_request;
+    std::for_each(minion_workers.begin(), minion_workers.end(), std::mem_fn(&std::thread::join));
 }
 
 void Downloader::set_download_metadata(){
-    _operation_code = StatusCode::None;
+    _operation_code = OperationCode::None;
     try{
         http_session->sendRequest(*http_request);
         http_session->receiveResponse(*http_response);
@@ -91,25 +104,11 @@ std::string Downloader::get_other_url_parts(){
 }
 
 void Downloader::start_download(){
-    try{
-        http_response->clear();
-        http_request->setMethod(HTTPRequest::HTTP_GET);
-        http_request->setURI(_other_url_parts);
-        http_session->sendRequest(*http_request);
-        std::istream &is = http_session->receiveResponse(*http_response);
-        std::ofstream file("test.txt");
-        if(file.is_open()){
-            StreamCopier::copyStream(is, file);
-            file.close();
-        }
-        else{
-            std::cout<<"Error could not open the file"<<std::endl;
-        }
-    }
-    catch (const Poco::Exception &exc){
-        http_session->reset();
-        std::cout<<exc.displayText()<<std::endl;
-    }
+    std::vector<Minion> minions(10);
+    launch_minions(minions, minion_workers, [&](
+               std::vector<Minion>::iterator &m_it, std::vector<std::thread> &mw){
+                    mw.push_back(std::thread(&Minion::start_download_part, &(*m_it), _url,0));
+                });
 }
 
 void Downloader::operationcode_error(OperationCode opcode){
@@ -136,4 +135,16 @@ void Downloader::operationcode_error(OperationCode opcode){
         //we should never get here
         std::cout<<"Unknown operational code"<<std::endl;
     }
+}
+
+int Downloader::calculate_num_filechunks(){
+    //this is just dumb
+    _num_filechunks = 10;
+    return _num_filechunks;
+}
+
+int Downloader::calculate_num_threads(){
+    //this is also just dumb
+    _num_threads = 10;
+    return _num_threads;
 }

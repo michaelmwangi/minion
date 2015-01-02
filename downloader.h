@@ -1,6 +1,8 @@
 #ifndef DOWNLOADER
 #define DOWNLOADER
 #include <string>
+#include <vector>
+#include <thread>
 
 enum class OperationCode{
     None = 0,
@@ -33,15 +35,18 @@ private:
     int _num_filechunks;
     int _filesize;
     int _status_code;
-    int calculate_num_threads();
-    int calculate_num_filechunks();
     std::string _url;
     std::string _host_name;
     std::string _other_url_parts;
     std::string _filename;
+    std::vector<std::thread> minion_workers;
+    int calculate_num_threads();
+    int calculate_num_filechunks();    
     void clean_up();
     void set_download_metadata();
     void set_operation_code(int);
+    void merge_file_parts();
+    bool file_part_support();
 public:
     Downloader(std::string url);
     ~Downloader();
@@ -49,7 +54,9 @@ public:
     std::string get_other_url_parts();
     std::string get_filename();
     OperationCode get_operation_code();
-    void start_download();
+    void set_host(std::string);
+    void set_port(int);
+    void start_download();    
     void operationcode_error(OperationCode);
     void update_ui();
 };

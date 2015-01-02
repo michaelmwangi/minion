@@ -5,10 +5,13 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += main.cpp \
-    downloader.cpp
+    downloader.cpp \
+    minion.cpp
 
 HEADERS += \
-    downloader.h
+    downloader.h \
+    downloaderstats.h \
+    minion.h
 
 unix:!macx: LIBS += -L$$PWD/../../../../usr/local/lib/ -lPocoNet
 
