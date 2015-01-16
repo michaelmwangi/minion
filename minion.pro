@@ -11,7 +11,8 @@ SOURCES += main.cpp \
 HEADERS += \
     downloader.h \
     downloaderstats.h \
-    minion.h
+    minion.h \
+    constants.h
 
 unix:!macx: LIBS += -L$$PWD/../../../../usr/local/lib/ -lPocoNet
 
