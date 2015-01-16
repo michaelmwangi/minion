@@ -16,6 +16,7 @@
 #include <istream>
 #include <fstream>
 #include <sstream>
+#include <cstdio>
 
 using namespace Poco::Net;
 using namespace Poco;
@@ -85,12 +86,16 @@ void Downloader::merge_file_parts(){
                     StreamCopier::copyStream(ifile, file);
                     ifile.close();
             }
+            //clean up the file part
+            std::remove(filepath.c_str());
         }
         file.close();
     }
     else{
         std::cout<<"error creating file maybe permissions ?"<<std::endl;
     }
+
+
 }
 
 void Downloader::set_filename(){
