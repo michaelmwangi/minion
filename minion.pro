@@ -12,7 +12,9 @@ HEADERS += \
     downloader.h \
     downloaderstats.h \
     minion.h \
-    constants.h
+    constants.h \
+    optionparser.h \
+    proxyconfiguration.h
 
 unix:!macx: LIBS += -L$$PWD/../../../../usr/local/lib/ -lPocoNet
 

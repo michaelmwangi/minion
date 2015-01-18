@@ -38,7 +38,7 @@ Downloader::Downloader(std::string url, std::string proxyhost, std::string proxy
     _host_name = uri->getHost();
     _other_url_parts = uri->getPathAndQuery();
     if(_other_url_parts == "")
-        _other_url_parts = "/";
+        _other_url_parts = "/";    
     http_session = new HTTPClientSession(_host_name, _port_number);
     http_request = new HTTPRequest(HTTPRequest::HTTP_HEAD, _other_url_parts, HTTPRequest::HTTP_1_1);
     http_response = new HTTPResponse();
@@ -76,13 +76,14 @@ bool Downloader::check_accepts_ranges(HTTPResponse *response){
 
 void Downloader::merge_file_parts(){
     //TO Do check status of the process here i.e if everything went ok
-    std::ofstream file(_filename);
+    std::ofstream file(_filename, std::ios::binary);
 
     if(file.is_open()){
         for(auto part_name : file_partnames){
             std::string filepath = _home_path + "/" + part_name;
-            std::ifstream ifile(filepath);
+            std::ifstream ifile(filepath, std::ios::binary);
             if(ifile.is_open()){
+
                     StreamCopier::copyStream(ifile, file);
                     ifile.close();
             }
@@ -124,7 +125,7 @@ void Downloader::set_download_metadata(){
         _status_code = http_response->getStatus();
         std::cout<<"Status code : "<<_status_code<<std::endl;
         std::cout<<"host : "<< _host_name<<std::endl;
-        _filesize = http_response->getContentLength();        
+        _filesize = 27836694;//http_response->getContentLength();
         std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
         accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
         set_filename();
@@ -193,14 +194,14 @@ void Downloader::start_download(){
         int  current_sz;
         if(i == 0){
             range = std::to_string(0) + "-" + std::to_string(chunk_size);
-            current_sz = chunk_size;
+            current_sz = chunk_size + 1;
         }
         else if(i == (file_chunks - 1)){
             range  = std::to_string(current_sz) + "-";
         }
         else{
             range = std::to_string(current_sz) + "-" + std::to_string(current_sz + chunk_size);
-            current_sz += chunk_size;
+            current_sz += (chunk_size+1);
         }
         ranges.push_back(range);
     }
