@@ -17,7 +17,6 @@ public:
     {
     }
     ProxyConfiguration(std::string proxystringcompact){
-        // http://I08%2F1106%2F2011%40students:t34%40uon@proxy.uonbi.ac.ke:80
         //assuming Http proxy
         std::string protocol = "http://";
         std::string noprotocol = proxystringcompact.substr(protocol.length());
@@ -48,10 +47,11 @@ public:
             length = std::distance(host_it, noprotocol.end());
             auto port = noprotocol.substr(start_pos, length-1);
 
-            _username = username;
-            _host = host;
+            Poco::URI uri;
+            uri.decode(username, _username);
+            uri.decode(password, _password);
+            _host =  host;
             _port = std::stoi(port);
-            _password = password;
         }
 
     }

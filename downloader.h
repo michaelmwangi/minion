@@ -14,11 +14,14 @@ namespace Poco{
     }
 }
 
+class ProxyConfiguration;
+
 class Downloader{
 private:
     OperationConsts _operation_consts;
     OperationCode _operation_code;
-    Poco::Net::HTTPClientSession *http_session;
+    ProxyConfiguration *proxy_config;
+    Poco::Net::HTTPClientSession  *http_session;
     Poco::Net::HTTPRequest *http_request;
     Poco::Net::HTTPResponse *http_response;
     Poco::URI *uri;    
@@ -31,10 +34,7 @@ private:
     std::string _url;
     std::string _host_name;
     std::string _other_url_parts;
-    std::string _filename;
-    std::string _proxy_host;
-    std::string _proxy_username;
-    std::string _proxy_password;
+    std::string _filename;    
     std::string _home_path;
     std::vector<std::string> file_partnames;
     bool check_accepts_ranges(Poco::Net::HTTPResponse *);
@@ -49,7 +49,7 @@ private:
     OperationConsts convert_filesize_to_opconsts(int);
     bool file_part_support();  
 public:
-    Downloader(std::string url, std::string proxyhost=std::string(), std::string proxyusername=std::string(), std::string proxypassword=std::string(), int proxyport=NULL);
+    Downloader(std::string url, ProxyConfiguration *pconfig=nullptr);
     ~Downloader();
     std::string get_host();
     std::string get_other_url_parts();

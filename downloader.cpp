@@ -1,4 +1,5 @@
 #include "downloader.h"
+#include "proxyconfiguration.h"
 #include "downloaderstats.h"
 #include "minion.h"
 #include <Poco/StreamCopier.h>
@@ -29,9 +30,8 @@ void launch_minions(container1 &cont1, container2 &cont2, lambda  func){
         func(cont1_it, cont2);
 }
 
-Downloader::Downloader(std::string url, std::string proxyhost, std::string proxyusername, std::string proxypassword, int proxyport)
-    :accept_ranges{false}, _num_threads{1}, _num_filechunks{1}, _filesize{0}, _url{url}, _filename{""}, _port_number{80},
-    _proxy_host{proxyhost}, _proxy_username{proxyusername}, _proxy_password{proxypassword}, _proxy_port{proxyport}
+Downloader::Downloader(std::string url, ProxyConfiguration *pconfig)
+    :proxy_config{pconfig}, accept_ranges{false}, _num_threads{1}, _num_filechunks{1}, _filesize{0}, _url{url}, _filename{""}, _port_number{80}
 {
     _operation_code = OperationCode::None;
     uri = new Poco::URI(_url);    
@@ -42,12 +42,12 @@ Downloader::Downloader(std::string url, std::string proxyhost, std::string proxy
     http_session = new HTTPClientSession(_host_name, _port_number);
     http_request = new HTTPRequest(HTTPRequest::HTTP_HEAD, _other_url_parts, HTTPRequest::HTTP_1_1);
     http_response = new HTTPResponse();
-    if(!_proxy_host.empty()){
-        http_request->set("Proxy-Authorization" , "Basic bGVlbGE6bGVlbGExMjM=");
-        //set proxy port also here
-        http_session->setProxy(_proxy_host);
-        if(!proxyusername.empty()){
-            http_session->setProxyCredentials(_proxy_username, _proxy_password);
+    if(proxy_config != nullptr){
+        http_request->set("Proxy-Authorization" , "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        http_session->setProxy(proxy_config->get_host());
+        if( !proxy_config->get_username().empty() ){
+            http_session->setProxyCredentials(proxy_config->get_username(), proxy_config->get_password());
+            http_session->setProxyPort(proxy_config->get_port());
         }
     }
     set_download_metadata();
@@ -83,7 +83,6 @@ void Downloader::merge_file_parts(){
             std::string filepath = _home_path + "/" + part_name;
             std::ifstream ifile(filepath, std::ios::binary);
             if(ifile.is_open()){
-
                     StreamCopier::copyStream(ifile, file);
                     ifile.close();
             }
@@ -122,10 +121,10 @@ void Downloader::set_download_metadata(){
     try{
         http_session->sendRequest(*http_request);
         http_session->receiveResponse(*http_response);
-        _status_code = http_response->getStatus();
+        _status_code = http_response->getStatus();                
         std::cout<<"Status code : "<<_status_code<<std::endl;
         std::cout<<"host : "<< _host_name<<std::endl;
-        _filesize = 27836694;//http_response->getContentLength();
+        _filesize = http_response->getContentLength();
         std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
         accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
         set_filename();
@@ -208,8 +207,9 @@ void Downloader::start_download(){
     launch_minions(minions, minion_workers,
                    [&](std::vector<Minion>::iterator &m_it, std::vector<std::thread> &mw){
                             std::string range = ranges.at(mw.size());
-                            mw.push_back(std::thread(&Minion::start_download_part, &(*m_it), _url, range));
+                            mw.push_back(std::thread(&Minion::start_download_part, &(*m_it), _url, range, proxy_config));
                 });
+
     for(auto &worker_thread : minion_workers){
         std::stringstream ss;
         ss << worker_thread.get_id();
@@ -249,7 +249,7 @@ void Downloader::operationcode_error(OperationCode opcode){
 
 int Downloader::calculate_num_filechunks(){
     //this is just dumb
-    _num_filechunks = 10;
+    _num_filechunks = 1;
     return _num_filechunks;
 }
 

@@ -1,9 +1,12 @@
 #include "minion.h"
+#include "proxyconfiguration.h"
+#include "downloaderstats.h"
 #include <Poco/URI.h>
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
 #include <Poco/StreamCopier.h>
+#include <Poco/NullStream.h>
 #include <stdlib.h>
 #include <istream>
 #include <fstream>
@@ -15,7 +18,7 @@ using namespace Poco;
 using namespace Poco::Net;
 
 Minion::Minion()
-    : _port_number(80)
+    : _port_number(80), size_diff(0), prev_size(0), proxy_config{nullptr}
 {}
 
 Minion::~Minion(){
@@ -24,7 +27,7 @@ Minion::~Minion(){
     delete http_session;
 }
 
-void Minion::start_download_part(std::string url, std::string range){
+void Minion::start_download_part(std::string url, std::string range, ProxyConfiguration *pconfig){
     try{       
         uri = new URI(url);
         _host_name = uri->getHost();
@@ -36,6 +39,15 @@ void Minion::start_download_part(std::string url, std::string range){
         http_response = new HTTPResponse();
         std::string part = "bytes=" + range;
         std::cout<<"my range is "<<part<<std::endl;
+        if( pconfig != nullptr){
+            proxy_config = pconfig;
+            http_request->set("Proxy-Authorization" , "Basic bGVlbGE6bGVlbGExMjM=");
+            http_session->setProxy(proxy_config->get_host());
+            if( !proxy_config->get_username().empty() ){
+                http_session->setProxyCredentials(proxy_config->get_username(), proxy_config->get_password());
+                http_session->setProxyPort(proxy_config->get_port());
+            }
+        }
         http_request->set("Range", part);
         http_session->sendRequest(*http_request);
         std::stringstream ss;
@@ -46,7 +58,19 @@ void Minion::start_download_part(std::string url, std::string range){
         std::ofstream file(filepath);
         if(file){            
             std::istream &is = http_session->receiveResponse(*http_response);
-            StreamCopier::copyStream(is, file);
+            Poco::CountingInputStream c_input_stream(is);
+            DownloaderStats d_stats(c_input_stream);
+            std::thread stats_thread(&DownloaderStats::run, &d_stats);
+            std::thread update_stats_thread([&](){
+               while( !d_stats.check_if_done() )
+                   //update here
+                   std::cout<<d_stats.get_size()<<"\r";
+            });
+            StreamCopier::copyStream(c_input_stream, file);
+
+            d_stats.done();
+            stats_thread.join();
+            update_stats_thread.join();
             file.close();
         }
         else{
@@ -56,4 +80,8 @@ void Minion::start_download_part(std::string url, std::string range){
     catch (const Poco::Exception &exc){
         std::cout<<exc.displayText()<<std::endl;
     }
+}
+
+long Minion::get_size_diff(){
+    return size_diff;
 }
