@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
+#include <cstdlib> //exit  EXIT_FAILURE
 
 using namespace Poco::Net;
 using namespace Poco;
@@ -30,15 +31,25 @@ void launch_minions(container1 &cont1, container2 &cont2, lambda  func){
         func(cont1_it, cont2);
 }
 
+void Downloader::set_host_and_otherparts(){
+    _host_name = uri->getHost();
+    _other_url_parts = uri->getPathAndQuery();
+    if(_other_url_parts == "")
+        _other_url_parts = "/";
+}
+
 Downloader::Downloader(std::string url, ProxyConfiguration *pconfig)
     :proxy_config{pconfig}, accept_ranges{false}, _num_threads{1}, _num_filechunks{1}, _filesize{0}, _url{url}, _filename{""}, _port_number{80}
 {
     _operation_code = OperationCode::None;
+    //check if the passsed url has protocol if not append to it
+    //matches the first instance of ':' which should belong to the protocol,yeah i know a more robust way of getting the right protocol is needed
+    auto prot_it = std::find(_url.begin(), _url.end(), ':');
+    if( prot_it == _url.end() ){
+        _url = "http://" + _url;
+    }
     uri = new Poco::URI(_url);    
-    _host_name = uri->getHost();
-    _other_url_parts = uri->getPathAndQuery();
-    if(_other_url_parts == "")
-        _other_url_parts = "/";    
+    set_host_and_otherparts();
     http_session = new HTTPClientSession(_host_name, _port_number);
     http_request = new HTTPRequest(HTTPRequest::HTTP_HEAD, _other_url_parts, HTTPRequest::HTTP_1_1);
     http_response = new HTTPResponse();
@@ -57,11 +68,10 @@ Downloader::Downloader(std::string url, ProxyConfiguration *pconfig)
     file.createDirectory();
 }
 
+
+
 Downloader::~Downloader(){
-    delete uri;
-    delete http_session;
-    delete http_response;
-    delete http_request;
+    clean_up_resources();
 }
 
 bool Downloader::check_accepts_ranges(HTTPResponse *response){
@@ -116,15 +126,50 @@ void Downloader::set_filename(){
         }
 }
 
+void Downloader::clean_up_resources(){
+    delete uri;
+    delete http_request;
+    delete http_response;
+    delete http_session;
+}
+
 void Downloader::set_download_metadata(){
     _operation_code = OperationCode::None;
     try{
         http_session->sendRequest(*http_request);
         http_session->receiveResponse(*http_response);
         _status_code = http_response->getStatus();                
-        std::cout<<"Status code : "<<_status_code<<std::endl;
-        std::cout<<"host : "<< _host_name<<std::endl;
+        set_operation_code(_status_code);
+        if(get_operation_code() == OperationCode::Moved){
+            std::cout<<"moved"<<std::endl;
+            //resource moved, get the url and start new connection
+            _url = http_response->get("Location");
+            http_session->reset();
+            clean_up_resources();
+            uri = new URI(_url);
+            set_host_and_otherparts();
+            http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
+            http_session = new HTTPClientSession(_host_name, _port_number);
+            http_response = new HTTPResponse();
+            http_session->sendRequest(*http_request);
+            http_session->receiveResponse(*http_response);
+        }
+        else if(get_operation_code() != OperationCode::Okay){
+            operationcode_error(get_operation_code());
+            clean_up_resources();
+            exit(EXIT_FAILURE);
+        }
         _filesize = http_response->getContentLength();
+        if( _filesize < 0 ){
+            //initiate a mock request since server did not send content length with http:head request
+            http_session->reset();
+            delete http_request;
+            http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
+            http_session->sendRequest(*http_request);
+            http_session->receiveResponse(*http_response);
+            _filesize = http_response->getContentLength();
+            http_session->reset();
+        }
         std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
         accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
         set_filename();
@@ -150,11 +195,14 @@ void Downloader::set_operation_code(int statuscode){
     case 505:
         _operation_code = OperationCode::Server_Error;
         break;
-    case 405:
+    case 407:
         _operation_code = OperationCode::Proxy_Config;
         break;
     case 403:
         _operation_code = OperationCode::Resource_Forbidden;
+        break;
+    case 302:
+        _operation_code = OperationCode::Moved;
         break;
     default:
         std::cout<<"Status code not documented :"<<statuscode<<std::endl;
@@ -209,7 +257,26 @@ void Downloader::start_download(){
                             std::string range = ranges.at(mw.size());
                             mw.push_back(std::thread(&Minion::start_download_part, &(*m_it), _url, range, proxy_config));
                 });
-
+    std::thread update_stats_thread([&](){
+       bool finished = false;
+       while( !finished){
+           bool minion_completed = true;
+           auto size = 0L;
+           for(auto &minion : minions){
+               if( !minion.check_if_done() ){
+                   minion_completed = false;
+               }
+               size += minion.get_size();
+           }
+           auto percent_progress = ( ((float)size/(float)_filesize)) *100 ;
+           std::cout<<size<<"\r"<<"\t"<<percent_progress<<" %"<<"\r";
+           if(minion_completed){
+               std::cout<<std::endl;
+               finished = true;
+               std::cout<<"completed"<<std::endl;
+           }
+       }
+    });
     for(auto &worker_thread : minion_workers){
         std::stringstream ss;
         ss << worker_thread.get_id();
@@ -218,6 +285,7 @@ void Downloader::start_download(){
         file_partnames.push_back(name);
         worker_thread.join();
     }
+    update_stats_thread.join();
     merge_file_parts();
 }
 
@@ -249,7 +317,7 @@ void Downloader::operationcode_error(OperationCode opcode){
 
 int Downloader::calculate_num_filechunks(){
     //this is just dumb
-    _num_filechunks = 1;
+    _num_filechunks = 10;
     return _num_filechunks;
 }
 

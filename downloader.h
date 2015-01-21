@@ -41,7 +41,8 @@ private:
     int _proxy_port;
     int calculate_num_threads();
     int calculate_num_filechunks();    
-    void clean_up();
+    void clean_up_resources();
+    void set_host_and_otherparts();
     void set_download_metadata();
     void set_operation_code(int);
     void set_filename();

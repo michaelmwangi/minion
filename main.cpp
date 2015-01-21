@@ -30,38 +30,46 @@ const option::Descriptor usage[]= {
 };
 
 int main(int argc, char *argv[])
-{    
-    ProxyConfiguration p_config("http://I08%2F1106%2F2011%40students:t34%40uon@proxy.uonbi.ac.ke:80");
-//    argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
-//    option::Stats  stats(usage, argc, argv);
-//    option::Option options[4];
-//    option::Option buffer[stats.buffer_max];
-//    option::Parser parse(usage, argc, argv, options, buffer);
-//    if(parse.error()){
-//        std::cout<<"sorry encountered error in parsing the args see --help"<<std::endl;
-//        return 1;
-//    }
-//    //check for help option or no option
+{
+    argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
+    option::Stats  stats(usage, argc, argv);
+    option::Option options[4];
+    option::Option buffer[stats.buffer_max];
+    option::Parser parse(usage, argc, argv, options, buffer);
+    if(parse.error()){
+        std::cout<<"sorry encountered error in parsing the args see --help"<<std::endl;
+        return 1;
+    }
+    //check for help option or no option
 //    if(options[OptionIndex::HELP] || argc == 0){
-//        std::cout<<"Help message"<<std::endl;//option::printUsage(fwrite, stdout, usage, columns);
+//        std::cout<<"arguments -h --help  print this help and exit"<<std::endl;
+//        std::cout<<"          -p --proxy <proxy>  set proxy"<<std::endl;
+//        std::cout<<"          -u --url <url> set the url"<<std::endl;
 //        return 0;
 //    }
-//    for(int i = 0;i< parse.optionsCount();++i){
-//        option::Option &opt = buffer[i];
-//        switch(opt.index()){
-//        case OptionIndex::PROXY:
-//            std::cout<<"settin proxy here "<<opt.arg<<"done"<<std::endl;
-//            break;
-//        case OptionIndex::URL:
-//            std::cout<<"settin the url here "<<opt.arg<<std::endl;
-//            break;
-//        case OptionIndex::UNKNOWN:
-//            std::cout<<"unkown arguments passed"<<std::endl;
-//            break;
-//        }
-//    }
-    std::string url = "http://www.valvesoftware.com/company/Valve_Handbook_LowRes.pdf";
-    Downloader down(url, &p_config);
+    ProxyConfiguration *p_config=nullptr;
+    std::string url = std::string();
+    for(int i = 0;i< parse.optionsCount();++i){
+        option::Option &opt = buffer[i];
+        switch(opt.index()){
+        case OptionIndex::PROXY:
+            p_config = new ProxyConfiguration(opt.arg);
+            break;
+        case OptionIndex::URL:
+            url = opt.arg;
+            break;
+        case OptionIndex::UNKNOWN:
+            std::cout<<"unkown arguments passed"<<std::endl;
+            break;
+        }
+    }
+    url = "www.facebook.com";
+    if( url.empty()){
+        std::cout<<"Url argument not passed cannot continue"<<std::endl;
+        return 0;
+    }
+
+    Downloader down(url, p_config);
     down.start_download();
     return 0;
 }

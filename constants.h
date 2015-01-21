@@ -14,7 +14,8 @@ enum class OperationCode{
     Server_Error = 505,
     Bad_Gateway = 502,
     Proxy_Config = 405,
-    Resource_Forbidden = 403
+    Resource_Forbidden = 403,
+    Moved = 302
 };
 
 #endif // CONSTANTS_H

@@ -17,8 +17,8 @@ class ProxyConfiguration;
 class Minion{
 private:
     int _port_number;
-    int size_diff;
-    int prev_size;
+    long _size;
+    bool _done;
     std::string _host_name;
     std::string _other_parts;
     Poco::URI *uri;
@@ -31,7 +31,8 @@ public:
     Minion();
     ~Minion();
     void start_download_part(std::string, std::string, ProxyConfiguration *pconfig=nullptr);
-    long get_size_diff();
+    long get_size();
+    bool check_if_done();
 };
 
 #endif // MINION

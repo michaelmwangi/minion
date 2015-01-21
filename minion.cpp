@@ -18,7 +18,7 @@ using namespace Poco;
 using namespace Poco::Net;
 
 Minion::Minion()
-    : _port_number(80), size_diff(0), prev_size(0), proxy_config{nullptr}
+    : _port_number(80), _size(0), proxy_config{nullptr}, _done{false}
 {}
 
 Minion::~Minion(){
@@ -37,8 +37,7 @@ void Minion::start_download_part(std::string url, std::string range, ProxyConfig
         http_session = new HTTPClientSession(_host_name, _port_number);
         http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_parts, HTTPRequest::HTTP_1_1);
         http_response = new HTTPResponse();
-        std::string part = "bytes=" + range;
-        std::cout<<"my range is "<<part<<std::endl;
+        std::string part = "bytes=" + range;        
         if( pconfig != nullptr){
             proxy_config = pconfig;
             http_request->set("Proxy-Authorization" , "Basic bGVlbGE6bGVlbGExMjM=");
@@ -60,15 +59,19 @@ void Minion::start_download_part(std::string url, std::string range, ProxyConfig
             std::istream &is = http_session->receiveResponse(*http_response);
             Poco::CountingInputStream c_input_stream(is);
             DownloaderStats d_stats(c_input_stream);
+
+            //I dont think stats_thread is useful here since d_stats.get_size() returns number of characters directly
+            //It reports wrong size if stats_thread is removed if i get time will look into
             std::thread stats_thread(&DownloaderStats::run, &d_stats);
             std::thread update_stats_thread([&](){
-               while( !d_stats.check_if_done() )
-                   //update here
-                   std::cout<<d_stats.get_size()<<"\r";
+               while( !d_stats.check_if_done() ){
+                    _size = d_stats.get_size();
+               }
             });
-            StreamCopier::copyStream(c_input_stream, file);
 
+            StreamCopier::copyStream(c_input_stream, file);
             d_stats.done();
+            _done = true;
             stats_thread.join();
             update_stats_thread.join();
             file.close();
@@ -82,6 +85,10 @@ void Minion::start_download_part(std::string url, std::string range, ProxyConfig
     }
 }
 
-long Minion::get_size_diff(){
-    return size_diff;
+long Minion::get_size(){
+    return _size;
+}
+
+bool Minion::check_if_done(){
+    return _done;
 }
