@@ -19,6 +19,7 @@
 #include <sstream>
 #include <cstdio>
 #include <cstdlib> //exit  EXIT_FAILURE
+#include <sstream>
 
 using namespace Poco::Net;
 using namespace Poco;
@@ -31,11 +32,33 @@ void launch_minions(container1 &cont1, container2 &cont2, lambda  func){
         func(cont1_it, cont2);
 }
 
-void Downloader::set_host_and_otherparts(){
+void Downloader::set_host_otherparts_port(){
     _host_name = uri->getHost();
     _other_url_parts = uri->getPathAndQuery();
     if(_other_url_parts == "")
         _other_url_parts = "/";
+    auto index = _url.find_first_of(":");
+    //check if we have the protocol
+    // length("//") == 2
+    if( !(_url.substr(index, 3) ==  "://") ){
+        _url = "http://" + _url;
+    }
+    auto index2 = _url.find_last_of(":");
+    if( index2 != std::string::npos  && index2 != index){
+        auto port_len = 0;
+        auto init = index2;
+        while(_url.at(init) != '/'){
+            ++init;
+            ++port_len;
+        }
+        auto port_str = _url.substr(index2, port_len);
+        auto  port = std::stoi(port_str);
+        uri->setPort(port);
+    }
+    else{
+        //default port ->80
+        uri->setPort(80);
+    }
 }
 
 Downloader::Downloader(std::string url, ProxyConfiguration *pconfig)
@@ -44,12 +67,8 @@ Downloader::Downloader(std::string url, ProxyConfiguration *pconfig)
     _operation_code = OperationCode::None;
     //check if the passsed url has protocol if not append to it
     //matches the first instance of ':' which should belong to the protocol,yeah i know a more robust way of getting the right protocol is needed
-    auto prot_it = std::find(_url.begin(), _url.end(), ':');
-    if( prot_it == _url.end() ){
-        _url = "http://" + _url;
-    }
     uri = new Poco::URI(_url);    
-    set_host_and_otherparts();
+    set_host_otherparts_port();
     http_session = new HTTPClientSession(_host_name, _port_number);
     http_request = new HTTPRequest(HTTPRequest::HTTP_HEAD, _other_url_parts, HTTPRequest::HTTP_1_1);
     http_response = new HTTPResponse();
@@ -136,10 +155,12 @@ void Downloader::clean_up_resources(){
 void Downloader::set_download_metadata(){
     _operation_code = OperationCode::None;
     try{
+        http_request->set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0");
         http_session->sendRequest(*http_request);
         http_session->receiveResponse(*http_response);
         _status_code = http_response->getStatus();                
         set_operation_code(_status_code);
+
         if(get_operation_code() == OperationCode::Moved){
             std::cout<<"moved"<<std::endl;
             //resource moved, get the url and start new connection
@@ -147,7 +168,7 @@ void Downloader::set_download_metadata(){
             http_session->reset();
             clean_up_resources();
             uri = new URI(_url);
-            set_host_and_otherparts();
+            set_host_otherparts_port();
             http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
             http_session = new HTTPClientSession(_host_name, _port_number);
             http_response = new HTTPResponse();
@@ -170,7 +191,12 @@ void Downloader::set_download_metadata(){
             _filesize = http_response->getContentLength();
             http_session->reset();
         }
-        std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
+        if (_filesize > 0){
+            std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
+        }
+        else{
+            std::cout<<"filesize is  "<<"~"<<" bytes"<<std::endl;
+        }
         accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
         set_filename();
     }
@@ -227,29 +253,33 @@ std::string Downloader::get_other_url_parts(){
 
 void Downloader::start_download(){
     int file_chunks = 1;
-    int chunk_size = _filesize;
-    if(accept_ranges == true ){
-        file_chunks = calculate_num_filechunks();
-        chunk_size = _filesize / file_chunks;
-    }
+    int chunk_size = _filesize;    
     std::vector<Minion> minions(file_chunks);
     std::vector<std::thread> minion_workers;
     std::vector<std::string> ranges;
-    for(int i=0;i<file_chunks;++i){
-        //variables initialized below
-        std::string range;
-        int  current_sz;
-        if(i == 0){
-            range = std::to_string(0) + "-" + std::to_string(chunk_size);
-            current_sz = chunk_size + 1;
+    if(accept_ranges == true && _filesize > 0){
+        file_chunks = calculate_num_filechunks();
+        chunk_size = _filesize / file_chunks;
+        for(int i=0;i<file_chunks;++i){
+            //variables initialized below
+            std::string range;
+            int  current_sz;
+            if(i == 0){
+                range = std::to_string(0) + "-" + std::to_string(chunk_size);
+                current_sz = chunk_size + 1;
+            }
+            else if(i == (file_chunks - 1)){
+                range  = std::to_string(current_sz) + "-";
+            }
+            else{
+                range = std::to_string(current_sz) + "-" + std::to_string(current_sz + chunk_size);
+                current_sz += (chunk_size+1);
+            }
+            ranges.push_back(range);
         }
-        else if(i == (file_chunks - 1)){
-            range  = std::to_string(current_sz) + "-";
-        }
-        else{
-            range = std::to_string(current_sz) + "-" + std::to_string(current_sz + chunk_size);
-            current_sz += (chunk_size+1);
-        }
+    }
+    else{
+        std::string range = "0-";
         ranges.push_back(range);
     }
     launch_minions(minions, minion_workers,
@@ -257,26 +287,26 @@ void Downloader::start_download(){
                             std::string range = ranges.at(mw.size());
                             mw.push_back(std::thread(&Minion::start_download_part, &(*m_it), _url, range, proxy_config));
                 });
-    std::thread update_stats_thread([&](){
-       bool finished = false;
-       while( !finished){
-           bool minion_completed = true;
-           auto size = 0L;
-           for(auto &minion : minions){
-               if( !minion.check_if_done() ){
-                   minion_completed = false;
-               }
-               size += minion.get_size();
-           }
-           auto percent_progress = ( ((float)size/(float)_filesize)) *100 ;
-           std::cout<<size<<"\r"<<"\t"<<percent_progress<<" %"<<"\r";
-           if(minion_completed){
-               std::cout<<std::endl;
-               finished = true;
-               std::cout<<"completed"<<std::endl;
-           }
-       }
-    });
+//    std::thread update_stats_thread([&](){
+//       bool finished = false;
+//       while( !finished){
+//           bool minion_completed = true;
+//           auto size = 0L;
+//           for(auto &minion : minions){
+//               if( !minion.check_if_done() ){
+//                   minion_completed = false;
+//               }
+//               size += minion.get_size();
+//           }
+//           auto percent_progress = ( ((float)size/(float)_filesize)) *100 ;
+//           std::cout<<size<<"\r"<<"\t"<<percent_progress<<" %"<<"\r";
+//           if(minion_completed){
+//               std::cout<<std::endl;
+//               finished = true;
+//               std::cout<<"completed"<<std::endl;
+//           }
+//       }
+//    });
     for(auto &worker_thread : minion_workers){
         std::stringstream ss;
         ss << worker_thread.get_id();
@@ -285,7 +315,7 @@ void Downloader::start_download(){
         file_partnames.push_back(name);
         worker_thread.join();
     }
-    update_stats_thread.join();
+//    update_stats_thread.join();
     merge_file_parts();
 }
 

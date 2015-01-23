@@ -41,12 +41,12 @@ int main(int argc, char *argv[])
         return 1;
     }
     //check for help option or no option
-//    if(options[OptionIndex::HELP] || argc == 0){
-//        std::cout<<"arguments -h --help  print this help and exit"<<std::endl;
-//        std::cout<<"          -p --proxy <proxy>  set proxy"<<std::endl;
-//        std::cout<<"          -u --url <url> set the url"<<std::endl;
-//        return 0;
-//    }
+    if(options[OptionIndex::HELP] || argc == 0){
+        std::cout<<"arguments -h --help  print this help and exit"<<std::endl;
+        std::cout<<"          -p --proxy <proxy>  set proxy"<<std::endl;
+        std::cout<<"          -u --url <url> set the url"<<std::endl;
+        return 0;
+    }
     ProxyConfiguration *p_config=nullptr;
     std::string url = std::string();
     for(int i = 0;i< parse.optionsCount();++i){
@@ -63,12 +63,10 @@ int main(int argc, char *argv[])
             break;
         }
     }
-    url = "www.facebook.com";
     if( url.empty()){
         std::cout<<"Url argument not passed cannot continue"<<std::endl;
         return 0;
     }
-
     Downloader down(url, p_config);
     down.start_download();
     return 0;

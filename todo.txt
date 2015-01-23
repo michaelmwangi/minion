@@ -1,0 +1,7 @@
+- Exiting the program early in case of exception being thrown
+- Progress data does not work correctly
+- Adjust num of download threads to 1 if no filesize is available - done
+- better messagin/display of info system
+- extract port number from url if passed  - done
+- retry reconection if failed
+- config files
