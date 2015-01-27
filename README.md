@@ -7,9 +7,9 @@ g++ -o minion  main.cpp downloader.cpp minion.cpp  -std=c++11 -lPocoNet -lPocoFo
 
 #What works
 
--> Works with http proxy
--> For filesizes larger than 1Mb it is split to 10 parts which are downloaded in parallel and thereafter merged into a single file
--> I have yet to come up with a better algorithm for splitting the files
+1. Works with http proxy
+2. For filesizes larger than 1Mb it is split to 10 parts which are downloaded in parallel and thereafter merged into a single file
+3. I have yet to come up with a better algorithm for splitting the files
 
 #To do
 
