@@ -3,6 +3,8 @@
 #include "downloader.h"
 #include "optionparser.h"
 #include "proxyconfiguration.h"
+#include <Poco/Exception.h>
+
 
 struct Arg: public option::Arg{
     static void print_error(std::string msg){
@@ -67,8 +69,13 @@ int main(int argc, char *argv[])
         std::cout<<"Url argument not passed cannot continue"<<std::endl;
         return 0;
     }
-    Downloader down(url, p_config);
-    down.start_download();
+    try{
+        Downloader down(url, p_config);
+        down.start_download();
+    }
+    catch (const Poco::Exception &exc){
+        std::cout<<"Sorry an error occured: "<<exc.displayText()<<std::endl;
+    }
     return 0;
 }
 

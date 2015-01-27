@@ -154,57 +154,50 @@ void Downloader::clean_up_resources(){
 
 void Downloader::set_download_metadata(){
     _operation_code = OperationCode::None;
-    try{
-        http_request->set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0");
+    //http_request->set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0");
+    http_session->sendRequest(*http_request);
+    http_session->receiveResponse(*http_response);
+    _status_code = http_response->getStatus();
+    set_operation_code(_status_code);
+
+    if(get_operation_code() == OperationCode::Moved){
+        std::cout<<"moved"<<std::endl;
+        //resource moved, get the url and start new connection
+        _url = http_response->get("Location");
+        http_session->reset();
+        clean_up_resources();
+        uri = new URI(_url);
+        set_host_otherparts_port();
+        http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
+        http_session = new HTTPClientSession(_host_name, _port_number);
+        http_response = new HTTPResponse();
         http_session->sendRequest(*http_request);
         http_session->receiveResponse(*http_response);
-        _status_code = http_response->getStatus();                
-        set_operation_code(_status_code);
-
-        if(get_operation_code() == OperationCode::Moved){
-            std::cout<<"moved"<<std::endl;
-            //resource moved, get the url and start new connection
-            _url = http_response->get("Location");
-            http_session->reset();
-            clean_up_resources();
-            uri = new URI(_url);
-            set_host_otherparts_port();
-            http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
-            http_session = new HTTPClientSession(_host_name, _port_number);
-            http_response = new HTTPResponse();
-            http_session->sendRequest(*http_request);
-            http_session->receiveResponse(*http_response);
-        }
-        else if(get_operation_code() != OperationCode::Okay){
-            operationcode_error(get_operation_code());
-            clean_up_resources();
-            exit(EXIT_FAILURE);
-        }
-        _filesize = http_response->getContentLength();
-        if( _filesize < 0 ){
-            //initiate a mock request since server did not send content length with http:head request
-            http_session->reset();
-            delete http_request;
-            http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
-            http_session->sendRequest(*http_request);
-            http_session->receiveResponse(*http_response);
-            _filesize = http_response->getContentLength();
-            http_session->reset();
-        }
-        if (_filesize > 0){
-            std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
-        }
-        else{
-            std::cout<<"filesize is  "<<"~"<<" bytes"<<std::endl;
-        }
-        accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
-        set_filename();
     }
-    catch (const Poco::Exception &exc){
-        std::cout<<"error code  ->"<< exc.name()<<std::endl;
-        std::cout<<"Sorry an error occured "<<exc.displayText()<<std::endl;
+    else if(get_operation_code() != OperationCode::Okay){
+        operationcode_error(get_operation_code());
+        clean_up_resources();
+        exit(EXIT_FAILURE);
+    }
+    _filesize = http_response->getContentLength();
+    if( _filesize < 0 ){
+        //initiate a mock request since server did not send content length with http:head request
+        http_session->reset();
+        delete http_request;
+        http_request = new HTTPRequest(HTTPRequest::HTTP_GET, _other_url_parts, HTTPRequest::HTTP_1_1);
+        http_session->sendRequest(*http_request);
+        http_session->receiveResponse(*http_response);
+        _filesize = http_response->getContentLength();
         http_session->reset();
     }
+    if (_filesize > 0){
+        std::cout<<"filesize is  "<<_filesize<<" bytes"<<std::endl;
+    }
+    else{
+        std::cout<<"filesize is  "<<"~"<<" bytes"<<std::endl;
+    }
+    accept_ranges = check_accepts_ranges(http_response) == true ? true : false;
+    set_filename();
 }
 
 void Downloader::set_operation_code(int statuscode){
@@ -229,6 +222,9 @@ void Downloader::set_operation_code(int statuscode){
         break;
     case 302:
         _operation_code = OperationCode::Moved;
+        break;
+    case 503:
+        _operation_code = OperationCode::Service_Unavailable;
         break;
     default:
         std::cout<<"Status code not documented :"<<statuscode<<std::endl;
@@ -307,6 +303,7 @@ void Downloader::start_download(){
 //           }
 //       }
 //    });
+    std::cout<<"download in progress please wait"<<std::endl;
     for(auto &worker_thread : minion_workers){
         std::stringstream ss;
         ss << worker_thread.get_id();
@@ -316,6 +313,7 @@ void Downloader::start_download(){
         worker_thread.join();
     }
 //    update_stats_thread.join();
+    std::cout<<"completed"<<std::endl;
     merge_file_parts();
 }
 
@@ -338,6 +336,9 @@ void Downloader::operationcode_error(OperationCode opcode){
         break;
     case OperationCode::Resource_Forbidden:
         std::cout<<"Server sent back 403 status code -> Access to the resource is forbidden"<<std::endl;
+        break;
+    case OperationCode::Service_Unavailable:
+        std::cout<<"Sorry but the service seems unavailable"<<std::endl;
         break;
     default:
         //we should never get here

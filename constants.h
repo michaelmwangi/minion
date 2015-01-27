@@ -15,6 +15,7 @@ enum class OperationCode{
     Bad_Gateway = 502,
     Proxy_Config = 405,
     Resource_Forbidden = 403,
+    Service_Unavailable = 503,
     Moved = 302
 };
 
